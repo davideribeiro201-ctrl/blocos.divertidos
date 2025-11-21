@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlocosDivertidos - Plataforma de Jogos 3D com IA</title>
+    <!-- Carregar Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carregar Three.js para o ambiente 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Estilização personalizada para o canvas 3D */
+        #game-container {
+            position: relative;
+            width: 100%;
+            /* Ocupa a altura restante do viewport menos o cabeçalho e margens */
+            height: calc(100vh - 6rem); 
+            overflow: hidden;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 4px, 6px, 0.05); /* shadow-2xl */
+        }
+        canvas {
+            display: block;
+        }
+        /* Estilos do Modal de Autenticação e Amizades */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+        }
+        /* Estilo para a caixa de saída da IA */
+        #inspiration-output {
+            min-height: 10rem;
+            max-height: 15rem;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            background-color: #f3f4f6;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            box-shadow: inset 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans p-4">
+
+    <!-- Modal de Autenticação (Login/Registo) -->
+    <div id="auth-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay hidden">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <h2 id="auth-title" class="text-3xl font-bold mb-6 text-center text-blue-600">Entrar na Plataforma</h2>
+
+            <!-- Formulário de Autenticação -->
+            <form id="auth-form" onsubmit="event.preventDefault(); handleAuthSubmit();">
+                <div class="mb-4">
+                    <label for="auth-email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input type="email" id="auth-email" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="o-seu-email@exemplo.com">
+                </div>
+                <div class="mb-6">
+                    <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+                    <input type="password" id="auth-password" required minlength="6" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Mínimo 6 caracteres">
+                </div>
+                
+                <button type="submit" id="auth-submit-btn" class="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-300 shadow-lg">Entrar</button>
+            </form>
+
+            <!-- Alternar entre Login e Registo -->
+            <p class="mt-6 text-center text-sm">
+                <span id="auth-toggle-text">Não tem uma conta?</span>
+                <button id="auth-toggle-btn" class="font-semibold text-blue-600 hover:text-blue-800 transition duration-300 ml-1" onclick="toggleAuthMode()">Criar Conta</button>
+            </p>
+            <p id="auth-error" class="text-red-500 text-sm mt-4 text-center hidden"></p>
+        </div>
+    </div>
+    
+    <!-- Modal de Amizades (Friendship Modal) -->
+    <div id="friends-modal" class="fixed inset-0 z-40 flex items-center justify-center modal-overlay hidden">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-4 h-5/6 flex flex-col">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 class="text-2xl font-bold text-purple-600">Sistema de Amigos</h2>
+                <button onclick="hideFriendsModal()" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+
+            <!-- Formulário para Adicionar Amigo por ID de Utilizador -->
+            <form onsubmit="event.preventDefault(); sendFriendRequest();" class="mb-4 flex space-x-2">
+                <input type="text" id="friend-id-input" required placeholder="ID de Utilizador (o código longo) para Adicionar" class="flex-grow px-3 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 text-sm">
+                <button type="submit" class="px-4 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition duration-300 text-sm">Enviar Pedido</button>
+            </form>
+
+            <div class="overflow-y-auto flex-grow">
+                
+                <!-- Secção de Pedidos Pendentes -->
+                <h3 class="text-xl font-semibold text-gray-700 mb-3 border-b border-yellow-300 pb-1">Pedidos Recebidos (<span id="received-requests-count">0</span>)</h3>
+                <div id="received-requests-list" class="space-y-3 mb-6">
+                    <p class="text-gray-500 italic" id="no-received-requests">Nenhum pedido de amizade pendente.</p>
+                    <!-- Pedidos serão injetados aqui -->
+                </div>
+
+                <!-- Secção de Amigos Atuais -->
+                <h3 class="text-xl font-semibold text-gray-700 mb-3 border-b border-blue-300 pb-1">Os Meus Amigos (<span id="accepted-friends-count">0</span>)</h3>
+                <div id="accepted-friends-list" class="space-y-3">
+                    <p class="text-gray-500 italic" id="no-accepted-friends">Ainda não tem amigos aceites.</p>
+                    <!-- Amigos serão injetados aqui -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NOVO: Modal de Inspiração de Construção (Gemini Feature) -->
+    <div id="inspiration-modal" class="fixed inset-0 z-40 flex items-center justify-center modal-overlay hidden">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl mx-4">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 class="text-2xl font-bold text-pink-600">Assistente Criativo Gemini ✨</h2>
+                <button onclick="hideInspirationModal()" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+
+            <p class="mb-4 text-gray-600">Descreva o seu ambiente ou o que procura construir para o Gemini lhe dar uma ideia.</p>
+
+            <div class="mb-4 flex space-x-2">
+                <input type="text" id="inspiration-prompt-input" placeholder="Ex: 'Quero construir algo para um amigo no deserto.' (Opcional)" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                <button onclick="generateBuildingIdea()" class="px-6 py-2 bg-pink-500 text-white font-bold rounded-lg hover:bg-pink-600 transition duration-300 shadow-md">Gerar Ideia</button>
+            </div>
+
+            <div class="relative mt-6">
+                <div id="inspiration-output" class="text-gray-800 text-sm mb-4">
+                    <!-- O output do LLM será injetado aqui -->
+                    <p class="text-gray-500 italic">As ideias geradas aparecerão aqui.</p>
+                </div>
+                <div id="inspiration-loading" class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center rounded-lg hidden">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
+                    <p class="ml-3 text-pink-600 font-semibold">A pensar numa ideia...</p>
+                </div>
+            </div>
+            
+            <button id="speak-idea-btn" onclick="readBuildingIdea()" class="w-full mt-4 py-2 bg-indigo-500 text-white font-bold rounded-lg hover:bg-indigo-600 transition duration-300 shadow-md hidden">
+                🎧 Ouvir Ideia (TTS)
+            </button>
+        </div>
+    </div>
+
+    <!-- Cabeçalho da Plataforma (Simulando a navegação) -->
+    <header class="flex items-center justify-between p-4 bg-white rounded-xl shadow-lg mb-4">
+        <h1 class="text-3xl font-extrabold text-blue-600">BlocosDivertidos</h1>
+        <div class="flex items-center space-x-4">
+            <!-- NOVO BOTÃO GEMINI -->
+            <button onclick="showInspirationModal()" class="px-4 py-2 bg-pink-500 text-white font-bold rounded-lg hover:bg-pink-600 transition duration-300 shadow-md">Inspiração de Construção ✨</button>
+            
+            <span id="user-display" class="text-sm font-medium text-gray-700 bg-gray-100 p-2 rounded-lg text-right">A carregar utilizador...</span>
+            <button onclick="showFriendsModal()" class="px-4 py-2 bg-purple-500 text-white font-bold rounded-lg hover:bg-purple-600 transition duration-300 shadow-md">Amigos</button>
+            <button class="px-4 py-2 bg-yellow-500 text-white font-bold rounded-lg hover:bg-yellow-600 transition duration-300 shadow-md">Criar Jogo</button>
+            <button class="px-4 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition duration-300 shadow-md">Explorar</button>
+            <button id="logout-btn" class="px-4 py-2 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition duration-300 shadow-md hidden" onclick="handleLogout()">Sair</button>
+        </div>
+    </header>
+
+    <!-- Contentor Principal do Jogo 3D -->
+    <main class="max-w-7xl mx-auto">
+        <div id="game-container">
+            <!-- O canvas Three.js será anexado aqui -->
+            <div id="loading-overlay" class="absolute inset-0 bg-gray-900 bg-opacity-75 flex flex-col items-center justify-center z-10 text-white p-4 rounded-xl">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                <p class="mt-4 text-xl font-semibold">A carregar o seu mundo 3D...</p>
+                <p class="mt-2 text-sm text-gray-300">Use WASD ou Setas para se mover.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Mensagem de controlo (substitui alert/confirm) -->
+    <div id="message-box" class="fixed bottom-4 right-4 bg-blue-500 text-white p-3 rounded-lg shadow-xl hidden transition-opacity duration-500 opacity-0"></div>
+
+    <!-- Script de Inicialização do Firebase, Lógica 3D e Gemini API -->
+    <script type="module">
+        // Importações do Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Importa setDoc, query, where, deleteDoc para o sistema de amizades
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Variáveis Globais de Configuração do Ambiente Canvas ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'blocosdivertidos-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let userEmail = null; 
+        let authMode = 'login'; 
+        let gameInitialized = false; 
+        let lastSaveTime = Date.now();
+        const SAVE_INTERVAL = 5000; 
+        
+        // --- Variáveis do Sistema de Amizades ---
+        let friendsListener = null; 
+        let friendsList = { received: [], accepted: [], sent: [] }; 
+
+        // --- Funções de Utilidade de UI ---
+
+        /**
+         * Exibe uma mensagem de notificação temporária no ecrã.
+         * @param {string} message - A mensagem a exibir.
+         */
+        function showMessage(message) {
+            const msgBox = document.getElementById('message-box');
+            msgBox.textContent = message;
+            msgBox.classList.remove('hidden', 'opacity-0');
+            msgBox.classList.add('opacity-100', 'bg-blue-600');
+            
+            setTimeout(() => {
+                msgBox.classList.remove('opacity-100');
+                msgBox.classList.add('opacity-0');
+                setTimeout(() => msgBox.classList.add('hidden'), 500); 
+            }, 3000);
+        }
+
+        /**
+         * Alterna entre os modos de login e registo no modal.
+         */
+        window.toggleAuthMode = function() {
+            const title = document.getElementById('auth-title');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const toggleText = document.getElementById('auth-toggle-text');
+            const toggleBtn = document.getElementById('auth-toggle-btn');
+            const errorMsg = document.getElementById('auth-error');
+            errorMsg.classList.add('hidden');
+
+            if (authMode === 'login') {
+                authMode = 'signup';
+                title.textContent = 'Criar Nova Conta';
+                submitBtn.textContent = 'Registar';
+                toggleText.textContent = 'Já tem uma conta?';
+                toggleBtn.textContent = 'Entrar';
+            } else {
+                authMode = 'login';
+                title.textContent = 'Entrar na Plataforma';
+                submitBtn.textContent = 'Entrar';
+                toggleText.textContent = 'Não tem uma conta?';
+                toggleBtn.textContent = 'Criar Conta';
+            }
+        }
+        
+        /**
+         * Exibe/Esconde Modais.
+         */
+        function showAuthModal() { document.getElementById('auth-modal').classList.remove('hidden'); }
+        function hideAuthModal() { document.getElementById('auth-modal').classList.add('hidden'); }
+        window.showFriendsModal = function() {
+             if (userId) {
+                document.getElementById('friends-modal').classList.remove('hidden'); 
+            } else {
+                showMessage("Precisa de estar autenticado para aceder aos amigos.");
+            }
+        }
+        window.hideFriendsModal = function() { document.getElementById('friends-modal').classList.add('hidden'); }
+        
+        window.showInspirationModal = function() {
+             if (userId) {
+                document.getElementById('inspiration-modal').classList.remove('hidden'); 
+            } else {
+                showMessage("Precisa de estar autenticado para usar o assistente criativo.");
+            }
+        }
+        window.hideInspirationModal = function() { document.getElementById('inspiration-modal').classList.add('hidden'); }
+
+
+        /**
+         * Processa a submissão do formulário (Login ou Registo).
+         */
+        window.handleAuthSubmit = async function() {
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+            const errorMsg = document.getElementById('auth-error');
+            errorMsg.classList.add('hidden');
+            
+            try {
+                let userCredential;
+                if (authMode === 'signup') {
+                    userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    showMessage("Conta criada com sucesso! A iniciar sessão...");
+                } else {
+                    userCredential = await signInWithEmailAndPassword(auth, email, password);
+                    showMessage("Sessão iniciada com sucesso!");
+                }
+
+                // Adicionar o ID do utilizador ao display após registo/login
+                document.getElementById('user-display').innerHTML = 
+                    `<span class="text-xs">ID: ${userCredential.user.uid.substring(0, 8)}...</span>
+                    <br>
+                    Email: ${userCredential.user.email}`;
+
+            } catch (error) {
+                console.error("Erro de Autenticação:", error.code, error.message);
+                let displayMessage = "Erro desconhecido.";
+                if (error.code === 'auth/weak-password') {
+                    displayMessage = "Senha fraca (mínimo 6 caracteres).";
+                } else if (error.code === 'auth/email-already-in-use') {
+                    displayMessage = "O email já está em uso. Tente Iniciar Sessão.";
+                } else if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    displayMessage = "Credenciais inválidas. Verifique o email/senha ou crie uma conta.";
+                }
+                errorMsg.textContent = displayMessage;
+                errorMsg.classList.remove('hidden');
+            }
+        }
+        
+        /**
+         * Processa o logout do utilizador.
+         */
+        window.handleLogout = async function() {
+            try {
+                if (friendsListener) friendsListener(); // Desinscrever o listener de amizades
+                await signOut(auth);
+                showMessage("Sessão terminada. Volte em breve!");
+            } catch (error) {
+                console.error("Erro ao terminar sessão:", error);
+                showMessage("Erro ao terminar sessão.");
+            }
+        }
+
+        // --- Funções de Ajuda do Sistema de Amizades ---
+        
+        /**
+         * Devolve a referência à coleção pública de amizades.
+         */
+        function getFriendsCollectionRef() {
+            // Caminho da coleção pública: artifacts/{appId}/public/data/friends
+            return collection(db, `artifacts/${appId}/public/data/friends`);
+        }
+        
+        /**
+         * Gera um ID de documento único e ordenado para uma amizade entre dois IDs.
+         * @param {string} id1 - Primeiro ID de utilizador.
+         * @param {string} id2 - Segundo ID de utilizador.
+         * @returns {string} - ID de amizade ordenado (ex: "ID_MAIS_PEQUENO:ID_MAIS_GRANDE").
+         */
+        function getFriendshipId(id1, id2) {
+            return id1 < id2 ? `${id1}:${id2}` : `${id2}:${id1}`;
+        }
+        
+        /**
+         * Envia um pedido de amizade para um utilizador através do seu ID de Utilizador (UID).
+         */
+        window.sendFriendRequest = async function() {
+            if (!userId) { showMessage("Autenticação necessária."); return; }
+
+            const targetId = document.getElementById('friend-id-input').value.trim();
+            document.getElementById('friend-id-input').value = ''; // Limpar input
+            
+            if (!targetId) {
+                showMessage("Por favor, insira um ID de Utilizador.");
+                return;
+            }
+            if (targetId === userId) {
+                showMessage("Não pode adicionar a si próprio.");
+                return;
+            }
+            
+            // Usamos a função de ação genérica com 'send'
+            await handleFriendshipAction('send', targetId);
+        }
+        
+        /**
+         * Processa a aceitação, envio ou remoção de amizade.
+         * @param {('send'|'accept'|'remove')} action - Ação a realizar.
+         * @param {string} targetId - ID do utilizador alvo.
+         */
+        window.handleFriendshipAction = async function(action, targetId) {
+            if (!userId || userId === targetId) return;
+
+            const friendshipId = getFriendshipId(userId, targetId);
+            const docRef = doc(getFriendsCollectionRef(), friendshipId);
+            
+            try {
+                if (action === 'send') {
+                    const docSnap = await getDoc(docRef);
+                    
+                    if (docSnap.exists() && docSnap.data().status === 'accepted') {
+                         showMessage(`Já é amigo de ${targetId.substring(0, 8)}...`);
+                         return;
+                    }
+
+                    const newFriendship = {
+                        requesterId: userId,
+                        receiverId: targetId,
+                        status: 'pending',
+                        timestamp: Date.now()
+                    };
+                    await setDoc(docRef, newFriendship, { merge: true });
+                    showMessage(`Pedido de amizade enviado para ${targetId.substring(0, 8)}...`);
+                } else if (action === 'accept') {
+                    await setDoc(docRef, { status: 'accepted' }, { merge: true });
+                    showMessage(`Amizade aceite com ${targetId.substring(0, 8)}!`);
+                } else if (action === 'remove') {
+                    await deleteDoc(docRef);
+                    showMessage(`Amizade removida com ${targetId.substring(0, 8)}...`);
+                }
+            } catch (error) {
+                console.error(`Erro na ação (${action}) de amizade:`, error);
+                showMessage(`Erro ao processar ação de amizade: ${action}.`);
+            }
+        }
+
+        /**
+         * Renderiza a lista de amigos e pedidos no modal.
+         */
+        function renderFriendsList() {
+            const receivedList = document.getElementById('received-requests-list');
+            const acceptedList = document.getElementById('accepted-friends-list');
+            const noReceivedText = document.getElementById('no-received-requests');
+            const noAcceptedText = document.getElementById('no-accepted-friends');
+            const receivedCount = document.getElementById('received-requests-count');
+            const acceptedCount = document.getElementById('accepted-friends-count');
+            
+            if (!receivedList || !acceptedList || !noReceivedText || !noAcceptedText || !receivedCount || !acceptedCount) {
+                console.warn("Elementos do DOM do modal de Amigos não encontrados. A ignorar renderização.");
+                return;
+            }
+
+            // Limpar listas
+            receivedList.innerHTML = '';
+            acceptedList.innerHTML = '';
+            
+            // 1. Renderizar Pedidos Recebidos
+            if (friendsList.received.length > 0) {
+                noReceivedText.classList.add('hidden');
+                friendsList.received.forEach(request => {
+                    const requesterId = request.requesterId;
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center justify-between p-2 bg-yellow-100 rounded-lg shadow-sm';
+                    el.innerHTML = `
+                        <span class="font-medium text-gray-800 text-sm">Pedido de: ${requesterId.substring(0, 8)}...</span>
+                        <div class="space-x-2">
+                            <button onclick="handleFriendshipAction('accept', '${requesterId}')" class="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded-lg hover:bg-green-600 transition">Aceitar</button>
+                            <button onclick="handleFriendshipAction('remove', '${requesterId}')" class="px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition">Recusar</button>
+                        </div>
+                    `;
+                    receivedList.appendChild(el);
+                });
+            } else {
+                noReceivedText.classList.remove('hidden');
+            }
+            receivedCount.textContent = friendsList.received.length;
+
+            // 2. Renderizar Amigos Aceites
+            const acceptedRelationships = [
+                ...friendsList.accepted, 
+                ...friendsList.sent.filter(f => f.status === 'accepted')
+            ]; 
+            
+            const uniqueFriendIds = new Set();
+            const friendsToRender = [];
+
+            acceptedRelationships.forEach(friendship => {
+                const friendId = friendship.requesterId === userId ? friendship.receiverId : friendship.requesterId;
+
+                if (!uniqueFriendIds.has(friendId)) {
+                    uniqueFriendIds.add(friendId);
+                    friendsToRender.push(friendId);
+                }
+            });
+            
+            if (friendsToRender.length > 0) {
+                noAcceptedText.classList.add('hidden');
+                
+                friendsToRender.forEach(friendId => {
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center justify-between p-2 bg-blue-100 rounded-lg shadow-sm';
+                    el.innerHTML = `
+                        <span class="font-medium text-gray-800 text-sm">Amigo: ${friendId.substring(0, 8)}...</span>
+                        <button onclick="handleFriendshipAction('remove', '${friendId}')" class="px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition">Remover</button>
+                    `;
+                    acceptedList.appendChild(el);
+                });
+
+            } else {
+                 noAcceptedText.classList.remove('hidden');
+            }
+            acceptedCount.textContent = friendsToRender.length;
+        }
+
+        /**
+         * Configura o listener do Firestore para o estado das amizades.
+         */
+        function setupFriendsListener() {
+            if (!db || !userId) return;
+
+            if (friendsListener) friendsListener();
+            
+            const friendsCol = getFriendsCollectionRef();
+
+            const qReceived = query(friendsCol, where('receiverId', '==', userId));
+            const qSent = query(friendsCol, where('requesterId', '==', userId));
+
+            const unsubscribeReceived = onSnapshot(qReceived, (snapshot) => {
+                friendsList.received = [];
+                friendsList.accepted = [];
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (data.status === 'pending') {
+                        friendsList.received.push(data);
+                    } else if (data.status === 'accepted') {
+                        friendsList.accepted.push(data);
+                    }
+                });
+                renderFriendsList();
+            }, (error) => {
+                console.error("Erro no listener de amizades recebidas:", error);
+            });
+            
+            const unsubscribeSent = onSnapshot(qSent, (snapshot) => {
+                friendsList.sent = snapshot.docs.map(doc => doc.data());
+                renderFriendsList();
+            }, (error) => {
+                console.error("Erro no listener de amizades enviadas:", error);
+            });
+
+            friendsListener = () => {
+                unsubscribeReceived();
+                unsubscribeSent();
+            };
+        }
+
+        // --- Funções de Ajuda da Gemini API (LLM e TTS) ---
+        
+        // Helper para escrever strings em DataView (necessário para pcmToWav)
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+        
+        /**
+         * Converte uma string Base64 (áudio) para ArrayBuffer.
+         * @param {string} base64 - String Base64.
+         * @returns {ArrayBuffer}
+         */
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        /**
+         * Converte dados PCM brutos (Int16Array) para um Blob WAV reproduzível.
+         * @param {Int16Array} pcmData - Dados de áudio PCM brutos (Signed 16-bit).
+         * @param {number} sampleRate - Taxa de amostragem.
+         * @returns {Blob} - Blob do ficheiro WAV.
+         */
+        function pcmToWav(pcmData, sampleRate) {
+            const numChannels = 1;
+            const bytesPerSample = 2; // 16-bit PCM
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+
+            const buffer = new ArrayBuffer(44 + pcmData.byteLength * bytesPerSample);
+            const view = new DataView(buffer);
+
+            // RIFF chunk descriptor
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcmData.byteLength * bytesPerSample, true);
+            writeString(view, 8, 'WAVE');
+
+            // fmt sub-chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true); // Sub-chunk size
+            view.setUint16(20, 1, true); // Audio format (1 = PCM)
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bytesPerSample * 8, true); // Bits per sample (16)
+
+            // data sub-chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcmData.byteLength * bytesPerSample, true);
+
+            // Write the PCM data
+            const pcmArray = new Int16Array(buffer, 44);
+            pcmArray.set(pcmData);
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+
+        /**
+         * Chamada Genérica à Gemini API com Backoff Exponencial.
+         */
+        async function performGeminiCall(apiUrl, payload, maxRetries = 5) {
+            const apiKey = ""; // API key é fornecida pelo ambiente
+            const finalApiUrl = `${apiUrl}?key=${apiKey}`;
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const response = await fetch(finalApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        return await response.json();
+                    } else if (response.status === 429 || response.status >= 500) {
+                        if (attempt < maxRetries - 1) {
+                            const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            continue;
+                        }
+                    }
+                    const errorBody = await response.json();
+                    throw new Error(`API Error ${response.status}: ${errorBody.error?.message || 'Erro desconhecido.'}`);
+
+                } catch (error) {
+                    if (attempt === maxRetries - 1) {
+                        throw new Error(`Gemini API falhou após ${maxRetries} tentativas: ${error.message}`);
+                    }
+                }
+            }
+        }
+        
+        /**
+         * 1. Gera uma ideia de construção usando o Gemini LLM (Text Generation).
+         */
+        window.generateBuildingIdea = async function() {
+            const promptInput = document.getElementById('inspiration-prompt-input');
+            const outputDiv = document.getElementById('inspiration-output');
+            const loadingEl = document.getElementById('inspiration-loading');
+            const speakBtn = document.getElementById('speak-idea-btn');
+
+            if (!userId) {
+                outputDiv.innerHTML = '<p class="text-red-500">Por favor, inicie sessão para usar o assistente criativo.</p>';
+                return;
+            }
+
+            loadingEl.classList.remove('hidden');
+            outputDiv.innerHTML = '<p class="text-gray-500 italic">A processar...</p>';
+            speakBtn.classList.add('hidden');
+            
+            const userPrompt = promptInput.value.trim() || "Estou num campo aberto, sem nada construído.";
+
+            const systemPrompt = `Você é um assistente criativo para um jogo de construção de blocos (como o Minecraft/Roblox). A sua tarefa é gerar uma ideia de construção divertida e detalhada baseada no pedido do utilizador.
+            A sua resposta deve ser estruturada da seguinte forma, utilizando Português de Portugal:
+            1. Nome da Construção/Projeto.
+            2. Descrição (3 a 5 frases, focando no propósito e nos aspetos visuais).
+            3. Blocos Necessários (3 a 5 tipos de "materiais" simulados, como 'Blocos de Pedra Cinzenta', 'Madeira', 'Vidro Azul', 'Lava Simulada').
+            4. Objetivo do Jogo (O que o jogador fará com esta construção).`;
+            
+            const llmPayload = {
+                contents: [{ parts: [{ text: `Gere uma ideia para o seguinte contexto: ${userPrompt}` }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+            
+            try {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent`;
+                const result = await performGeminiCall(apiUrl, llmPayload);
+                
+                const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (generatedText) {
+                    // Formatar a resposta para o utilizador
+                    const formattedText = generatedText
+                        .replace(/^1\. (.*)/m, '<strong>Nome:</strong> $1')
+                        .replace(/^2\. (.*)/m, '<br><strong>Descrição:</strong> $1')
+                        .replace(/^3\. (.*)/m, '<br><strong>Blocos Necessários:</strong> $1')
+                        .replace(/^4\. (.*)/m, '<br><strong>Objetivo:</strong> $1');
+                    
+                    outputDiv.innerHTML = formattedText.replaceAll('\n', '<br>');
+                    speakBtn.classList.remove('hidden');
+                } else {
+                    outputDiv.innerHTML = '<p class="text-yellow-500">O LLM não gerou uma ideia. Tente reformular o pedido.</p>';
+                }
+
+            } catch (e) {
+                console.error("Erro na geração de ideia de construção:", e);
+                outputDiv.innerHTML = `<p class="text-red-500">Erro ao comunicar com o Assistente Criativo.</p>`;
+            } finally {
+                loadingEl.classList.add('hidden');
+            }
+        }
+        
+        /**
+         * 2. Lê a ideia gerada usando o Gemini TTS LLM (Text-to-Speech Generation).
+         */
+        window.readBuildingIdea = async function() {
+            const outputDiv = document.getElementById('inspiration-output');
+            const speakBtn = document.getElementById('speak-idea-btn');
+            // Usamos innerText para obter o texto puro, ignorando as tags <strong>
+            const textToSpeak = outputDiv.innerText.trim(); 
+
+            if (!textToSpeak || textToSpeak.includes('A processar')) {
+                showMessage("Gere uma ideia primeiro para a poder ouvir.");
+                return;
+            }
+            
+            const originalText = speakBtn.textContent;
+            speakBtn.textContent = '🎧 A gerar e a tocar Áudio...';
+            speakBtn.disabled = true;
+
+            try {
+                const ttsConfig = {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } // Voz clara e informativa
+                };
+                
+                const ttsPayload = {
+                    contents: [{ parts: [{ text: `Leia o seguinte em Português de Portugal, com um tom entusiástico: ${textToSpeak}` }] }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: ttsConfig
+                    },
+                    model: "gemini-2.5-flash-preview-tts"
+                };
+                
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent`;
+                const result = await performGeminiCall(apiUrl, ttsPayload);
+                
+                const part = result?.candidates?.[0]?.content?.parts?.[0];
+                const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
+
+                if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                    const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+                    const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+                    
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, sampleRate);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                    showMessage("A reproduzir a inspiração! Ajuste o volume do sistema.");
+                } else {
+                    throw new Error("Dados de áudio inválidos ou ausentes.");
+                }
+                
+            } catch (e) {
+                console.error("Erro na Geração de TTS:", e);
+                showMessage(`Erro ao gerar áudio: Ocorreu um problema no serviço TTS.`);
+            } finally {
+                speakBtn.textContent = originalText;
+                speakBtn.disabled = false;
+            }
+        }
+
+        // --- Inicialização do Firebase ---
+
+        if (firebaseConfig) {
+            try {
+                setLogLevel('debug'); 
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Autenticar o utilizador e gerir o estado de autenticação
+                onAuthStateChanged(auth, async (user) => {
+                    const userDisplay = document.getElementById('user-display');
+                    const logoutBtn = document.getElementById('logout-btn');
+                    
+                    if (user) {
+                        userId = user.uid;
+                        userEmail = user.email;
+                        
+                        userDisplay.innerHTML = 
+                            `<span class="text-xs">ID: ${userId.substring(0, 8)}...</span>
+                            <br>
+                            Email: ${user.email || 'N/A'}`;
+                        logoutBtn.classList.remove('hidden');
+                        hideAuthModal();
+                        
+                        setupFriendsListener();
+                        
+                        if (!gameInitialized) {
+                            await initThreeJS();
+                            gameInitialized = true;
+                        }
+                    } else {
+                        if (initialAuthToken) {
+                            try {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                                return; 
+                            } catch (error) {
+                                console.error("Erro no login com token:", error);
+                            }
+                        }
+                        
+                        userId = null;
+                        userEmail = null;
+                        if (friendsListener) { friendsListener(); friendsListener = null; }
+                        userDisplay.textContent = 'Não Autenticado';
+                        logoutBtn.classList.add('hidden');
+                        
+                        if (!gameInitialized) {
+                            await initThreeJS(); 
+                            gameInitialized = true;
+                        }
+                        
+                        if (authMode === 'login') {
+                            toggleAuthMode();
+                        }
+                        showAuthModal(); 
+                    }
+                });
+            } catch (e) {
+                console.error("Erro ao inicializar Firebase:", e);
+                showMessage("Erro ao carregar serviços da plataforma. A iniciar modo offline 3D.");
+                initThreeJS();
+            }
+        } else {
+             // Modo offline sem Firebase
+            document.getElementById('user-display').textContent = 'Modo Offline (Sem Auth)';
+            showMessage("Plataforma a correr em modo offline. O progresso não será guardado.");
+            initThreeJS(); 
+        }
+
+        // --- Lógica Three.js (Motor de Jogo 3D) ---
+        let scene, camera, renderer, player;
+        const speed = 0.5;
+        const keys = { w: false, a: false, s: false, d: false };
+        let moveForward = 0, moveRight = 0;
+
+        /**
+         * Configura a cena 3D e o motor de renderização.
+         */
+        async function initThreeJS() {
+            const container = document.getElementById('game-container');
+            
+            try {
+                // 1. Scene (Cena)
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB); 
+
+                // 2. Camera (Câmara)
+                camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+                camera.position.set(0, 5, 10);
+                camera.lookAt(0, 0, 0);
+
+                // 3. Renderer (Renderizador)
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.shadowMap.enabled = true; 
+                container.appendChild(renderer.domElement);
+
+                // 4. Iluminação
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 10);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.far = 50;
+                scene.add(directionalLight);
+
+                // 5. Terreno (Chão)
+                const floorGeometry = new THREE.PlaneGeometry(100, 100);
+                const floorMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 }); 
+                const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+                floor.rotation.x = -Math.PI / 2;
+                floor.receiveShadow = true;
+                scene.add(floor);
+
+                // 6. Player (Personagem - um cubo azul)
+                const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+                const playerMaterial = new THREE.MeshLambertMaterial({ color: 0x007bff });
+                player = new THREE.Mesh(playerGeometry, playerMaterial);
+                player.position.set(0, 1, 0); 
+                player.castShadow = true;
+                scene.add(player);
+
+                // 7. Adicionar alguns obstáculos (simular um jogo)
+                createObstacle(5, 0.5, 0);
+                createObstacle(-10, 0.5, -5);
+                createObstacle(0, 0.5, -15);
+                
+                // 8. Event Listeners
+                window.addEventListener('resize', onWindowResize, false);
+                document.addEventListener('keydown', onKeyDown, false);
+                document.addEventListener('keyup', onKeyUp, false);
+
+                // 9. Carregar Posição do Jogador 
+                if (db && userId) {
+                    await loadPlayerPosition(); 
+                }
+
+                camera.position.x = player.position.x;
+                camera.position.z = player.position.z + 8;
+                camera.lookAt(player.position.x, player.position.y + 0.5, player.position.z);
+
+
+                // Remover o ecrã de carregamento
+                document.getElementById('loading-overlay').style.display = 'none';
+                if (userId) {
+                    showMessage("Mundo carregado! Use WASD ou Setas para jogar. O seu progresso será guardado.");
+                } else {
+                     showMessage("Mundo carregado em modo de demonstração. Faça Login para guardar o progresso.");
+                }
+
+                // Iniciar o loop de animação
+                animate();
+            } catch (e) {
+                console.error("Erro fatal ao inicializar Three.js:", e);
+                document.getElementById('loading-overlay').innerHTML = `
+                    <p class="text-red-500 font-bold text-xl">ERRO FATAL</p>
+                    <p class="mt-2 text-sm text-gray-300">Não foi possível iniciar o motor 3D. Verifique a consola para detalhes.</p>
+                `;
+            }
+        }
+        
+        /**
+         * Carrega a última posição guardada do jogador a partir do Firestore.
+         */
+        async function loadPlayerPosition() {
+            if (!db || !userId) return;
+            const playerDocRef = doc(db, `artifacts/${appId}/users/${userId}/game_data`, 'player_state');
+
+            try {
+                const docSnap = await getDoc(playerDocRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    player.position.x = data.x || 0;
+                    player.position.y = 1; 
+                    player.position.z = data.z || 0;
+                    showMessage(`Posição carregada: (${data.x.toFixed(2)}, ${data.z.toFixed(2)})`);
+                } else {
+                    showMessage("Nenhum progresso encontrado. A começar na posição inicial.");
+                }
+            } catch (error) {
+                console.error("Erro ao carregar posição do jogador:", error);
+                showMessage("Erro ao carregar progresso. A começar na posição inicial.");
+            }
+        }
+
+        /**
+         * Guarda a posição atual do jogador no Firestore.
+         */
+        async function savePlayerPosition() {
+            if (!db || !userId) return;
+            const playerDocRef = doc(db, `artifacts/${appId}/users/${userId}/game_data`, 'player_state');
+
+            const positionData = {
+                x: player.position.x,
+                y: 1, 
+                z: player.position.z,
+                lastUpdated: Date.now()
+            };
+
+            try {
+                await setDoc(playerDocRef, positionData);
+            } catch (error) {
+                console.error("Erro ao guardar posição do jogador:", error);
+            }
+        }
+
+        /**
+         * Cria um bloco de obstáculo no mundo.
+         */
+        function createObstacle(x, y, z) {
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+            const material = new THREE.MeshLambertMaterial({ color: 0xff4500 }); 
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.set(x, 1, z);
+            cube.castShadow = true;
+            cube.receiveShadow = true;
+            scene.add(cube);
+        }
+
+        /**
+         * Atualiza o tamanho do renderizador quando a janela é redimensionada.
+         */
+        function onWindowResize() {
+            const container = document.getElementById('game-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        /**
+         * Lida com a tecla pressionada.
+         */
+        function onKeyDown(event) {
+            switch (event.key.toLowerCase()) {
+                case 'w':
+                case 'arrowup':
+                    keys.w = true;
+                    break;
+                case 's':
+                case 'arrowdown':
+                    keys.s = true;
+                    break;
+                case 'a':
+                case 'arrowleft':
+                    keys.a = true;
+                    break;
+                case 'd':
+                case 'arrowright':
+                    keys.d = true;
+                    break;
+            }
+        }
+
+        /**
+         * Lida com a tecla solta.
+         */
+        function onKeyUp(event) {
+            switch (event.key.toLowerCase()) {
+                case 'w':
+                case 'arrowup':
+                    keys.w = false;
+                    break;
+                case 's':
+                case 'arrowdown':
+                    keys.s = false;
+                    break;
+                case 'a':
+                case 'arrowleft':
+                    keys.a = false;
+                    break;
+                case 'd':
+                case 'arrowright':
+                    keys.d = false;
+                    break;
+            }
+        }
+
+        /**
+         * Loop de animação principal (Game Loop).
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // CORREÇÃO DE SEGURANÇA: Evita quebra se o motor de renderização ou o player não estiverem prontos.
+            if (!renderer || !player) {
+                return; 
+            }
+
+            const isMoving = (keys.w || keys.a || keys.s || keys.d);
+            moveForward = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
+            moveRight = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+
+            const moveVector = new THREE.Vector3(moveRight, 0, moveForward);
+            moveVector.normalize();
+            moveVector.multiplyScalar(speed);
+
+            player.position.x += moveVector.x;
+            player.position.z -= moveVector.z; 
+
+            camera.position.x = player.position.x;
+            camera.position.z = player.position.z + 8; 
+            camera.position.y = 5; 
+            camera.lookAt(player.position.x, player.position.y + 0.5, player.position.z);
+
+            if (db && userId && isMoving) {
+                const now = Date.now();
+                if (now - lastSaveTime > SAVE_INTERVAL) {
+                    savePlayerPosition();
+                    lastSaveTime = now;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+        
+        // Assegurar que a inicialização 3D ocorre apenas após o carregamento da janela
+        window.onload = function () {
+             if (!firebaseConfig && !gameInitialized) {
+                 initThreeJS();
+                 gameInitialized = true;
+             }
+        }
+
+    </script>
+</body>
+</html>
